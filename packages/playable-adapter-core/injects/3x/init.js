@@ -97,6 +97,10 @@ window.__adapter_init = function () {
   }
 
   function __adapter_get_res_path(url, target) {
+    // fetch 可能传入 URL / Request 对象
+    if (typeof url !== 'string') {
+      url = String(url && (url.href || url.url) || url)
+    }
     if (target[url]) {
       return url
     }
@@ -181,6 +185,28 @@ window.__adapter_init = function () {
       }
       return _fetch(url, options)
     }
+  }
+
+  // 在 about:srcdoc / data: / blob: 页面中，import.meta.url 不是层级 URL，
+  // 引擎 new URL(relative, import.meta.url) 会抛出 Invalid URL（如 spine.js.mem 加载失败）。
+  // 解析失败时改用虚拟的 http 基础地址，保留路径以便 fetch 后缀匹配资源。
+  function __adapter_init_url() {
+    const _URL = window.URL
+    const FAKE_ORIGIN = 'http://__adapter__/'
+    class AdapterURL extends _URL {
+      constructor(url, base) {
+        try {
+          super(url, base)
+        } catch (err) {
+          if (typeof base === 'string' && /^(about|data|blob):/i.test(base)) {
+            super(url, FAKE_ORIGIN + base.replace(/^[a-z]+:\/*/i, ''))
+          } else {
+            throw err
+          }
+        }
+      }
+    }
+    window.URL = AdapterURL
   }
 
   function __adapter_init_js() {
@@ -414,6 +440,7 @@ window.__adapter_init = function () {
     throw Error("no find " + key);
   }
 
+  __adapter_init_url();
   __adapter_init_http();
 
   __adapter_eval(__adapter_get_path('src/polyfills.bundle'));
