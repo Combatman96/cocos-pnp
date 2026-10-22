@@ -3,7 +3,8 @@ import { getRealPath } from "./utils/file-system/resource";
 
 export const mountGlobalVars = (options: {
   buildFolderPath: string,
-  adapterBuildConfig?: TAdapterRC | null
+  adapterBuildConfig?: TAdapterRC | null,
+  buildName?: string
 }) => {
   if (global.__playable_ads_adapter_global__ && global.__playable_ads_adapter_global__.isMount) {
     return
@@ -12,6 +13,7 @@ export const mountGlobalVars = (options: {
     isMount: true,
     buildFolderPath: options.buildFolderPath,
     buildConfig: options.adapterBuildConfig ?? null,
+    buildName: options.buildName,
   }
 }
 
@@ -21,6 +23,10 @@ export const unmountGlobalVars = () => {
     buildFolderPath: '',
     buildConfig: null,
   }
+}
+
+export const getGlobalBuildName = () => {
+  return global.__playable_ads_adapter_global__.buildName
 }
 
 export const getGlobalBuildConfig = () => {

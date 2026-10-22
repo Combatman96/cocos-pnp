@@ -1,15 +1,40 @@
-import { join } from "path"
+import { basename, join } from "path"
 import { CheerioAPI, load } from "cheerio";
-import { mkdirSync } from "fs"
+import { existsSync, mkdirSync, readFileSync, unlinkSync } from "fs"
 import { MAX_ZIP_SIZE, REPLACE_SYMBOL } from "@/constants";
-import { injectFromRCJson } from "@/helpers/dom";
-import { TBuilderOptions, TResourceData, TZipFromSingleFileOptions } from "@/typings";
-import { getGlobalProjectBuildPath } from '@/global'
-import { writeToPath, readToPath, getOriginPkgPath, copyDirToPath, replaceGlobalSymbol, rmSync } from "@/utils"
+import { injectFromRCJson, injectRuntimeScript } from "@/helpers/dom";
+import { TBuilderOptions, TChannel, TResourceData, TZipFromSingleFileOptions } from "@/typings";
+import { getGlobalBuildName, getGlobalProjectBuildPath } from '@/global'
+import { writeToPath, readToPath, getOriginPkgPath, copyDirToPath, replaceGlobalSymbol, rmSync, getChannelOutputName, getBuildNameFromHtml, getOutputFolderName, zipDirectory, zipFiles } from "@/utils"
 import { deflate } from 'pako'
 import { jszipCode } from "@/helpers/injects";
 
 const FILE_MAX_SIZE = MAX_ZIP_SIZE * .8
+
+// Exported file/folder name: `<build name>_<Channel>`. The build name is the
+// editor build task's "Name"; without it, use the built index.html <title>.
+// Folder outputs ship as `<folder>.zip` with index.html at the archive root.
+const zipOutputFolder = (destPath: string, nestedZip?: boolean) => {
+  const name = basename(destPath)
+  zipDirectory(destPath, join(getOutputDir(), `${name}.zip`), nestedZip ? { folder: name, rename: { 'index.html': `${name}.html` } } : {})
+  rmSync(destPath)
+}
+
+const getBuildName = () => {
+  const buildName = getGlobalBuildName()
+  if (buildName) return buildName
+  const indexPath = join(getOriginPkgPath(), 'index.html')
+  return existsSync(indexPath) ? getBuildNameFromHtml(readToPath(indexPath, 'utf-8')) : undefined
+}
+
+const getOutputName = (channel: TChannel, strict = false) => getChannelOutputName(channel, getBuildName(), strict)
+
+// All channel outputs land together in `<build path>/<build name>/`.
+const getOutputDir = () => {
+  const dir = join(getGlobalProjectBuildPath(), getOutputFolderName(getBuildName()))
+  mkdirSync(dir, { recursive: true })
+  return dir
+}
 
 const globalReplacer = (options: Pick<TBuilderOptions, 'channel' | 'resMapper'> & { $: CheerioAPI }) => {
   const { channel, resMapper } = options
@@ -118,11 +143,11 @@ const fillCodeToHTML = ($: CheerioAPI, options: TBuilderOptions) => {
 }
 
 export const exportSingleFile = async (singleFilePath: string, options: TBuilderOptions) => {
-  const { channel, transformHTML, transform } = options
+  const { channel, transformHTML, transform, zipOutput } = options
 
   console.info(`【${channel}】adaptation started`)
   const singleHtml = readToPath(singleFilePath, 'utf-8')
-  const targetPath = join(getGlobalProjectBuildPath(), `${channel}.html`)
+  const targetPath = join(getOutputDir(), `${getOutputName(channel)}.html`)
 
   // Replace global variables.
   let $ = load(singleHtml)
@@ -130,6 +155,7 @@ export const exportSingleFile = async (singleFilePath: string, options: TBuilder
 
   // Inject additional configuration.
   await injectFromRCJson($, channel)
+  await injectRuntimeScript($, channel)
   writeToPath(targetPath, $.html())
 
   if (transformHTML) {
@@ -139,6 +165,11 @@ export const exportSingleFile = async (singleFilePath: string, options: TBuilder
 
   if (transform) {
     await transform(targetPath)
+  }
+
+  if (zipOutput) {
+    zipFiles(targetPath.replace(/\.html$/, '.zip'), [{ name: 'index.html', data: readFileSync(targetPath) }])
+    unlinkSync(targetPath)
   }
 
   console.info(`【${channel}】adaptation completed`)
@@ -151,7 +182,7 @@ export const exportZipFromPkg = async (options: TBuilderOptions) => {
   // Copy the folder.
   const originPkgPath = getOriginPkgPath()
   const projectBuildPath = getGlobalProjectBuildPath()
-  const destPath = join(projectBuildPath, channel)
+  const destPath = join(projectBuildPath, getOutputName(channel))
   copyDirToPath(originPkgPath, destPath)
 
   // Replace global variables.
@@ -162,6 +193,7 @@ export const exportZipFromPkg = async (options: TBuilderOptions) => {
   const singleHtml = readToPath(singleHtmlPath, 'utf-8')
   const $ = load(singleHtml)
   await injectFromRCJson($, channel)
+  await injectRuntimeScript($, channel)
 
   // Add the SDK script.
   if (transformHTML) {
@@ -175,17 +207,19 @@ export const exportZipFromPkg = async (options: TBuilderOptions) => {
     await transform(destPath)
   }
 
+  zipOutputFolder(destPath)
+
   console.info(`【${channel}】adaptation completed`)
 }
 
 export const exportDirZipFromSingleFile = async (singleFilePath: string, options: TZipFromSingleFileOptions) => {
-  const { channel, transformHTML, transform, transformScript, resMapper, compDiff } = options
+  const { channel, transformHTML, transform, transformScript, resMapper, compDiff, nestedZip } = options
 
   console.info(`【${channel}】adaptation started`)
   // Copy the folder.
   const singleHtmlPath = singleFilePath
   const projectBuildPath = getGlobalProjectBuildPath()
-  const destPath = join(projectBuildPath, channel)
+  const destPath = join(projectBuildPath, getOutputName(channel, nestedZip))
 
   // Empty the contents of the folder first.
   rmSync(destPath)
@@ -203,6 +237,7 @@ export const exportDirZipFromSingleFile = async (singleFilePath: string, options
 
   // Inject configuration file.
   await injectFromRCJson($, channel)
+  await injectRuntimeScript($, channel)
 
   // To extract all scripts and generate a JavaScript file
   const scriptNodes = $('body script[type!="systemjs-importmap"]')
@@ -228,6 +263,8 @@ export const exportDirZipFromSingleFile = async (singleFilePath: string, options
   if (transform) {
     await transform(destPath)
   }
+
+  zipOutputFolder(destPath, nestedZip)
 
   console.info(`【${channel}】adaptation completed`)
 }

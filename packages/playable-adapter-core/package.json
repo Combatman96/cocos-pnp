@@ -20,7 +20,8 @@
   "scripts": {
     "clear": "rm -rf dist/",
     "watch": "rollup -c -w",
-    "build": "rollup -c"
+    "build": "rollup -c",
+    "test": "node --test \"test/*.test.ts\""
   },
   "devDependencies": {
     "@rollup/plugin-alias": "^4.0.2",

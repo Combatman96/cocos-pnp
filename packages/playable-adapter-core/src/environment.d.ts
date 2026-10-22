@@ -19,5 +19,6 @@ declare global {
     isMount: boolean,
     buildFolderPath: string,
     buildConfig: TAdapterRC | null,
+    buildName?: string,
   }
 }

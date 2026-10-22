@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../super-html"
+		},
+		{
+			"path": "../cocos-engine"
+		}
+	],
+	"settings": {}
+}

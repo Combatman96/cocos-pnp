@@ -111,6 +111,10 @@ type TAdapterRC = {
 }
 ```
 
+Every channel also gets a default `window.super_html` runtime (compatible with the super-html extension): `download()`, `game_ready()`, `game_end()` and `is_hide_download()`. `game_end()` is always defined, and is empty on networks without an end-game hook, so it is safe to call. If a channel has an entry in `injectOptions`, the default runtime is not injected for that channel and your configuration is used instead.
+
+Exported files and folders are named `<build name>_<Channel>` (e.g. `iGHQ_PAIH_101RevserseAll_Pangle.html`), using the "Name" of the Cocos build task. If it is unavailable, the `<title>` of the built `index.html` is used.
+
 3. Supports specifying selected channels, using the following configuration:
 
 ```json

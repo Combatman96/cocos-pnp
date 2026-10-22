@@ -25,10 +25,11 @@ const task = async () => {
     // 重写console的log和info方法，使其在主线程中打印
     overrideConsole()
 
-    const { buildFolderPath, adapterBuildConfig } = workerData
+    const { buildFolderPath, adapterBuildConfig, buildName } = workerData
     await exec2xAdapter({
       buildFolderPath,
       adapterBuildConfig,
+      buildName,
     }, {
       mode: 'serial'
     })

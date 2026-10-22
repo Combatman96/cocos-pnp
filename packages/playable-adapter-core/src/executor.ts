@@ -10,7 +10,9 @@ import { mountGlobalVars, unmountGlobalVars } from "@/global"
 
 type TOptions = {
   buildFolderPath: string,
-  adapterBuildConfig?: TAdapterRC | null
+  adapterBuildConfig?: TAdapterRC | null,
+  // Name of the editor build task; falls back to the built index.html title.
+  buildName?: string
 }
 
 export const exec2xAdapter = async (options: TOptions, config?: { mode: TMode }) => {

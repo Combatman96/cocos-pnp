@@ -1,4 +1,4 @@
-import { AD_SDK_SCRIPT, LANDSCAPE_META, PORTRAIT_META } from './inject-vars'
+import { AD_SDK_SCRIPT, getOrientationMeta } from './inject-vars'
 import { exportSingleFile } from "@/exporter/2x"
 import { getChannelRCSdkScript } from '@/utils'
 import { TChannel, TChannelPkgOptions } from "@/typings"
@@ -10,9 +10,10 @@ export const export2xGoogle = async (options: TChannelPkgOptions) => {
   await exportSingleFile({
     ...options,
     channel,
+    zipOutput: true,
     transformHTML: async ($) => {
       // 增加横竖屏meta
-      const orientationStr = orientation === 'landscape' ? LANDSCAPE_META : PORTRAIT_META
+      const orientationStr = getOrientationMeta(orientation)
       $(orientationStr).appendTo('head')
 
       // 加入广告sdk脚本

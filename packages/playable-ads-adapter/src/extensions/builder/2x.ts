@@ -41,6 +41,7 @@ export const initBuildFinishedEvent = async (options: TBuildOptions, callback?: 
   const buildFolderPath = join(projectRootPath, projectBuildPath)
   const params = {
     buildFolderPath,
+    buildName: options.title,
     adapterBuildConfig: {
       ...adapterBuildConfig,
       buildPlatform: options.platform,

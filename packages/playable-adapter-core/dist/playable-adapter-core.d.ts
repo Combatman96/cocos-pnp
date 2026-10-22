@@ -70,6 +70,7 @@ declare type TMode = 'parallel' | 'serial';
 declare type TOptions = {
     buildFolderPath: string;
     adapterBuildConfig?: TAdapterRC | null;
+    buildName?: string;
 };
 declare const exec2xAdapter: (options: TOptions, config?: {
     mode: TMode;

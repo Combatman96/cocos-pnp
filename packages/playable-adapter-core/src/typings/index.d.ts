@@ -52,6 +52,10 @@ export type TBuilderOptions = {
   channel: TChannel
   transformHTML?: ($: CheerioAPI) => Promise<void>
   transform?: (destPath: string) => Promise<void>
+  // Single-file output only: ship as a zip holding the html as index.html.
+  zipOutput?: boolean
+  // Folder output only: zip as `<name>/<name>.html` inside `<name>.zip` (Mintegral).
+  nestedZip?: boolean
 } & Pick<TChannelPkgOptions, 'resMapper' | 'compDiff'>
 
 export type TZipFromSingleFileOptions = TBuilderOptions & {

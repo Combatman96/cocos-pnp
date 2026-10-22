@@ -7,5 +7,6 @@ export const export2xMintegral = async (options: TChannelPkgOptions) => {
   await exportDirZipFromSingleFile({
     ...options,
     channel,
+    nestedZip: true,
   })
 }
