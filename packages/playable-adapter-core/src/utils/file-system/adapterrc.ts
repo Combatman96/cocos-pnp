@@ -12,9 +12,9 @@ export const getAdapterRCJson = (): TAdapterRC | null => {
 
 export const getOriginPkgPath = () => {
   let configJson: Partial<TAdapterRC> = getAdapterRCJson() || {}
-  const buildPlatform = configJson.buildPlatform || 'web-mobile'
+  const buildFolderName = configJson.buildFolderName || configJson.buildPlatform || 'web-mobile'
 
-  return path.join(getGlobalProjectBuildPath(), buildPlatform!)
+  return path.join(getGlobalProjectBuildPath(), buildFolderName)
 }
 
 export const getChannelRCJson = (channel: TChannel): TChannelRC | null => {

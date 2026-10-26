@@ -81,7 +81,8 @@ export const initBuildFinishedEvent = (options: Partial<IBuildTaskOption>) => {
       buildName: options.name,
       adapterBuildConfig: {
         ...adapterBuildConfig,
-        buildPlatform: options.platform!
+        buildPlatform: options.platform!,
+        buildFolderName: options.outputName || options.platform!
       },
     }
 

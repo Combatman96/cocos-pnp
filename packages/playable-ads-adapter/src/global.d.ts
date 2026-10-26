@@ -470,6 +470,8 @@ type TChannelRC = {
 
 type TAdapterRC = {
   buildPlatform?: Platform
+  /** actual Cocos output folder name under build/, e.g. 'web-mobile-001'. Falls back to buildPlatform */
+  buildFolderName?: string
   skipBuild?: boolean
   orientation?: TWebOrientations
   exportChannels?: TChannel[]
