@@ -114,6 +114,14 @@ export type TObfuscateRC = {
   controlFlowFlattening?: boolean
   /** 0..1, how much code to flatten. Default 0.75 when flattening is on. */
   controlFlowFlatteningThreshold?: number
+  /** Move string literals into an encoded array. Hides SystemJS module ids. Costs size/CPU. */
+  stringArray?: boolean
+  /** Inject fake dead branches to confuse de-flattening tools. Costs size. */
+  deadCodeInjection?: boolean
+  /** Break execution when the output is beautified/tampered. */
+  selfDefending?: boolean
+  /** Anti-debugger traps. Off by default: can falsely trip ad-network validators. */
+  debugProtection?: boolean
   /** Extra resource-key substrings to obfuscate beyond the default scope. */
   include?: string[]
   /** Resource-key substrings to never obfuscate. */

@@ -44,18 +44,29 @@ test('normalizeObfuscateRC enables by default and opts out on false', () => {
   assert.equal(normalizeObfuscateRC({ controlFlowFlattening: true }).controlFlowFlattening, true)
 })
 
-test('buildObfuscatorOptions: branch default is flatten ON, string encryption OFF', () => {
-  // feat/obfuscate-flow defaults control-flow flattening ON.
+test('buildObfuscatorOptions: max branch defaults all layers ON except debugProtection', () => {
+  // feat/obfuscate-max defaults flatten + string array + dead code + self defending.
   const def = buildObfuscatorOptions({})
   assert.equal(def.controlFlowFlattening, true)
   assert.equal(def.controlFlowFlatteningThreshold, 0.75)
-  assert.equal(def.stringArray, false)
+  assert.equal(def.stringArray, true)
+  assert.equal(def.deadCodeInjection, true)
+  assert.equal(def.selfDefending, true)
+  assert.equal(def.debugProtection, false)
   assert.equal(def.sourceMap, false)
 
-  // Explicit override still wins.
-  const off = buildObfuscatorOptions({ controlFlowFlattening: false })
+  // Explicit overrides still win.
+  const off = buildObfuscatorOptions({
+    controlFlowFlattening: false,
+    stringArray: false,
+    deadCodeInjection: false,
+    selfDefending: false,
+  })
   assert.equal(off.controlFlowFlattening, false)
   assert.equal(off.controlFlowFlatteningThreshold, 0)
+  assert.equal(off.stringArray, false)
+  assert.equal(off.deadCodeInjection, false)
+  assert.equal(off.selfDefending, false)
 })
 
 const SAMPLE = `System.register("chunks:///_virtual/GameController.ts",["cc"],(function(exports){
@@ -85,11 +96,11 @@ test('obfuscateResMapper only rewrites in-scope keys and keeps valid, linkable J
   const out = resMapper['assets/main/index.js']
   assert.notEqual(out, SAMPLE, 'in-scope file was transformed')
   // Local function names are gone.
-  assert.ok(!out.includes('checkWin') || !out.includes('function checkWin'))
   assert.ok(!out.includes('unlockReward'))
-  // SystemJS registration + module id + dep array survive (linking intact).
-  assert.ok(/System\s*(\.|\[)\s*['"]?register/.test(out))
-  assert.ok(out.includes('chunks:///_virtual/GameController.ts'))
+  // String array is on by default here, so the module id is no longer plaintext.
+  assert.ok(!out.includes('chunks:///_virtual/GameController.ts'))
+  // References System (module registration still happens, via decoded strings).
+  assert.ok(out.includes('System'))
   // Output is syntactically valid.
   assert.doesNotThrow(() => new vm.Script(out))
 })

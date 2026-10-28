@@ -2,15 +2,27 @@ import JavaScriptObfuscator from 'javascript-obfuscator'
 import type { ObfuscatorOptions } from 'javascript-obfuscator'
 import type { TObfuscateRC } from '@/typings'
 
-// Branch default for control-flow flattening.
-// `feat/obfuscate`      -> false (names mangled, flow readable, ~0 cost)
-// `feat/obfuscate-flow` -> true  (flow flattened, higher size/CPU)
+// Branch defaults.
+// `feat/obfuscate`      -> flatten off, everything below off (names only, ~0 cost)
+// `feat/obfuscate-flow` -> flatten on, everything below off
+// `feat/obfuscate-max`  -> flatten on + string array + dead code + self defending
+//                         (strongest, highest size/CPU). debugProtection stays
+//                         off by default: it can falsely trip and break ad-network
+//                         previews/validators.
 const DEFAULT_CONTROL_FLOW_FLATTENING = true
+const DEFAULT_STRING_ARRAY = true
+const DEFAULT_DEAD_CODE_INJECTION = true
+const DEFAULT_SELF_DEFENDING = true
+const DEFAULT_DEBUG_PROTECTION = false
 
 type TNormalizedRC = {
   enable: boolean
   controlFlowFlattening?: boolean
   controlFlowFlatteningThreshold?: number
+  stringArray?: boolean
+  deadCodeInjection?: boolean
+  selfDefending?: boolean
+  debugProtection?: boolean
   include: string[]
   exclude: string[]
 }
@@ -25,6 +37,10 @@ export const normalizeObfuscateRC = (raw: boolean | TObfuscateRC | undefined): T
     enable: rc.enable !== false,
     controlFlowFlattening: rc.controlFlowFlattening,
     controlFlowFlatteningThreshold: rc.controlFlowFlatteningThreshold,
+    stringArray: rc.stringArray,
+    deadCodeInjection: rc.deadCodeInjection,
+    selfDefending: rc.selfDefending,
+    debugProtection: rc.debugProtection,
     include: rc.include ?? [],
     exclude: rc.exclude ?? [],
   }
@@ -49,8 +65,22 @@ export const shouldObfuscateKey = (objKey: string, rc: Pick<TNormalizedRC, 'incl
   return true
 }
 
-export const buildObfuscatorOptions = (rc: Pick<TNormalizedRC, 'controlFlowFlattening' | 'controlFlowFlatteningThreshold'>): ObfuscatorOptions => {
+export const buildObfuscatorOptions = (
+  rc: Pick<
+    TNormalizedRC,
+    | 'controlFlowFlattening'
+    | 'controlFlowFlatteningThreshold'
+    | 'stringArray'
+    | 'deadCodeInjection'
+    | 'selfDefending'
+    | 'debugProtection'
+  >
+): ObfuscatorOptions => {
   const controlFlowFlattening = rc.controlFlowFlattening ?? DEFAULT_CONTROL_FLOW_FLATTENING
+  const stringArray = rc.stringArray ?? DEFAULT_STRING_ARRAY
+  const deadCodeInjection = rc.deadCodeInjection ?? DEFAULT_DEAD_CODE_INJECTION
+  const selfDefending = rc.selfDefending ?? DEFAULT_SELF_DEFENDING
+  const debugProtection = rc.debugProtection ?? DEFAULT_DEBUG_PROTECTION
 
   return {
     compact: true,
@@ -60,21 +90,29 @@ export const buildObfuscatorOptions = (rc: Pick<TNormalizedRC, 'controlFlowFlatt
     // SystemJS module linking.
     identifierNamesGenerator: 'mangled',
     renameGlobals: false,
-    // String encryption intentionally OFF (keeps size/CPU down). As a result
-    // SystemJS module ids like 'chunks:///_virtual/Foo.ts' remain readable.
-    stringArray: false,
-    splitStrings: false,
     // No source map so the original TypeScript cannot be reconstructed.
     sourceMap: false,
-    // Flow protection — the one knob that differs between the two branches.
+    // Flow protection.
     controlFlowFlattening,
     controlFlowFlatteningThreshold: controlFlowFlattening
       ? (rc.controlFlowFlatteningThreshold ?? 0.75)
       : 0,
-    // Keep these off: they add size/CPU without serving the "hide logic" goal.
-    deadCodeInjection: false,
-    selfDefending: false,
-    debugProtection: false,
+    // String array hides string literals, incl SystemJS module ids like
+    // 'chunks:///_virtual/Foo.ts'. Values are preserved at runtime (decoder
+    // returns the original), so module linking still works.
+    stringArray,
+    // Threshold 1 so *all* string literals move, incl every SystemJS module id.
+    stringArrayThreshold: stringArray ? 1 : 0,
+    stringArrayEncoding: stringArray ? ['base64'] : [],
+    // Keep splitStrings off; it bloats and is not needed for logic hiding.
+    splitStrings: false,
+    // Fake branches to confuse de-flattening tools.
+    deadCodeInjection,
+    deadCodeInjectionThreshold: deadCodeInjection ? 0.2 : 0,
+    // Breaks when the output is beautified (deobfuscators beautify first).
+    selfDefending,
+    // Off by default: can falsely trip in ad-network render/validation.
+    debugProtection,
   }
 }
 
