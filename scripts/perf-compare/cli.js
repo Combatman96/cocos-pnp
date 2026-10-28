@@ -6,6 +6,9 @@ import puppeteer from 'puppeteer-core';
 import { runOnce } from './src/run-once.js';
 import { buildReport, formatTable, makeLabels } from './src/report.js';
 import { createTargetSource } from './src/autoplay/targets.js';
+import { serveFiles } from './src/serve.js';
+import { setupAndroid } from './src/android.js';
+import { pathToFileURL } from 'node:url';
 
 const DEFAULT_CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 
@@ -14,7 +17,9 @@ const { values: opts, positionals } = parseArgs({
   options: {
     runs: { type: 'string', default: '5' },
     sample: { type: 'string', default: '10000' },
-    cpu: { type: 'string', default: '4' },
+    cpu: { type: 'string' },
+    android: { type: 'boolean', default: false },
+    port: { type: 'string', default: '8080' },
     timeout: { type: 'string', default: '30000' },
     headless: { type: 'boolean', default: false },
     chrome: { type: 'string', default: process.env.CHROME_PATH || DEFAULT_CHROME },
@@ -32,7 +37,10 @@ if (opts.help || positionals.length === 0) {
   --autoplay SRC  play the game after the idle phase: 'bee-cube' or a tap script JSON
                   ({ "intervalMs": 400, "points": [[x, y], ...] } with x, y in 0..1)
   --play MS       autoplay duration; stops early on super_html.game_end (default 20000)
-  --cpu N         CPU throttle rate, 1 = none (default 4)
+  --cpu N         CPU throttle rate, 1 = none (default 4; 1 with --android)
+  --android       run on the USB-connected Android phone's Chrome instead of desktop
+                  (needs USB debugging on and Chrome open on the phone; no emulation)
+  --port N        local port the phone loads builds from with --android (default 8080)
   --timeout MS    limit for each phase: load, first draw, and measurement after it (default 30000)
   --headless      run headless (FPS then uses software GL; less realistic)
   --chrome PATH   Chrome executable (default CHROME_PATH or ${DEFAULT_CHROME})
@@ -57,33 +65,59 @@ if (files.length < 2) console.warn('warning: only one build given; nothing to co
 
 const runs = Number(opts.runs);
 const cfg = {
-  cpuThrottle: Number(opts.cpu),
+  cpuThrottle: Number(opts.cpu ?? (opts.android ? 1 : 4)),
   sampleMs: Number(opts.sample),
   timeoutMs: Number(opts.timeout),
-  viewport: { width: 390, height: 844, deviceScaleFactor: 3 },
+  // Real phone: its own screen, no emulation.
+  viewport: opts.android ? null : { width: 390, height: 844, deviceScaleFactor: 3 },
   playMs: Number(opts.play),
 };
+if (opts.android && opts.autoplay && opts.autoplay !== 'bee-cube') {
+  console.error('tap scripts need a known screen size; use --autoplay bee-cube with --android');
+  process.exit(1);
+}
 // Built before Chrome launches so a bad tap script fails fast.
 cfg.autoplay = opts.autoplay ? createTargetSource(opts.autoplay, cfg.viewport) : null;
 const labels = makeLabels(files);
 if (new Set(labels).size !== labels.length) throw new Error(`labels not unique: ${labels.join(', ')}`);
 const results = new Map(labels.map((l, i) => [l, { file: files[i], runs: [] }]));
 
+let browser;
+let server;
+let mode;
+if (opts.android) {
+  server = await serveFiles(files, Number(opts.port));
+  let device;
+  try {
+    device = await setupAndroid({ servePort: Number(opts.port) });
+    browser = await puppeteer.connect({ browserURL: device.browserURL, defaultViewport: null });
+  } catch (e) {
+    await server.close();
+    console.error(`android: ${e.message}`);
+    process.exit(1);
+  }
+  mode = `android ${device.serial} (${device.browser})`;
+  server.urls.forEach((u, i) => (results.get(labels[i]).url = u));
+} else {
+  browser = await puppeteer.launch({
+    executablePath: opts.chrome,
+    headless: opts.headless,
+    args: ['--enable-precise-memory-info', '--disable-background-timer-throttling', '--disable-renderer-backgrounding'],
+  });
+  mode = opts.headless ? 'headless (software GL)' : 'headed';
+  files.forEach((f, i) => (results.get(labels[i]).url = pathToFileURL(f).href));
+}
+
 console.log(
-  `mode=${opts.headless ? 'headless (software GL)' : 'headed'} runs=${runs} cpu=${cfg.cpuThrottle}x sample=${cfg.sampleMs}ms` +
+  `mode=${mode} runs=${runs} cpu=${cfg.cpuThrottle}x sample=${cfg.sampleMs}ms` +
     (cfg.autoplay ? ` autoplay=${cfg.autoplay.name} play=${cfg.playMs}ms` : '')
 );
 
-const browser = await puppeteer.launch({
-  executablePath: opts.chrome,
-  headless: opts.headless,
-  args: ['--enable-precise-memory-info', '--disable-background-timer-throttling', '--disable-renderer-backgrounding'],
-});
 try {
   // Interleave builds so drift (thermal, background load) hits all equally.
   for (let i = 0; i < runs; i++) {
     for (const [label, entry] of results) {
-      const r = await runOnce(browser, { file: entry.file, ...cfg });
+      const r = await runOnce(browser, { url: entry.url, ...cfg });
       entry.runs.push(r);
       const summary = r.ok
         ? `firstDraw=${r.firstDrawMs.toFixed(0)}ms fps=${r.frame.fps?.toFixed(1) ?? '-'} heap=${r.heapAfterLoadMB.toFixed(1)}MB errors=${r.pageErrors.length}` +
@@ -93,7 +127,10 @@ try {
     }
   }
 } finally {
-  await browser.close();
+  // Never close the phone's own Chrome; just detach.
+  if (opts.android) await browser.disconnect();
+  else await browser.close();
+  if (server) await server.close();
 }
 
 const report = buildReport(results);

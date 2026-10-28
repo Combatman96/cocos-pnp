@@ -1,4 +1,3 @@
-import { pathToFileURL } from 'node:url';
 import { PROBE_SOURCE } from './probe.js';
 import { frameStats } from './stats.js';
 import { withTimeout } from './timeout.js';
@@ -19,24 +18,40 @@ async function metrics(cdp) {
   return Object.fromEntries(list.map((m) => [m.name, m.value]));
 }
 
+// Fresh isolated context per run. Chrome on Android may not support extra
+// contexts; then use a new tab in the default one.
+async function openPage(browser) {
+  try {
+    const context = await browser.createBrowserContext();
+    return { page: await context.newPage(), close: () => context.close() };
+  } catch {
+    const page = await browser.newPage();
+    return { page, close: () => page.close() };
+  }
+}
+
+// viewport null = real device: no UA or screen emulation.
 export async function runOnce(
   browser,
-  { file, cpuThrottle, sampleMs, timeoutMs, viewport, autoplay = null, playMs = 0 },
+  { url, cpuThrottle, sampleMs, timeoutMs, viewport, autoplay = null, playMs = 0 },
 ) {
-  const context = await browser.createBrowserContext();
   const pageErrors = [];
+  let tab;
   try {
-    const page = await context.newPage();
+    tab = await openPage(browser);
+    const { page } = tab;
     page.on('pageerror', (e) => pageErrors.push(String(e && e.message ? e.message : e)));
-    await page.setUserAgent(MOBILE_UA);
-    await page.setViewport({ ...viewport, isMobile: true, hasTouch: true });
+    if (viewport) {
+      await page.setUserAgent(MOBILE_UA);
+      await page.setViewport({ ...viewport, isMobile: true, hasTouch: true });
+    }
 
     const cdp = await page.createCDPSession();
     await cdp.send('Performance.enable', { timeDomain: 'timeTicks' });
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: cpuThrottle });
     await page.evaluateOnNewDocument(PROBE_SOURCE);
 
-    await page.goto(pathToFileURL(file).href, { waitUntil: 'load', timeout: timeoutMs });
+    await page.goto(url, { waitUntil: 'load', timeout: timeoutMs });
     await page.waitForFunction(() => window.__perf && window.__perf.firstDrawMs !== null, {
       timeout: timeoutMs,
       polling: 50,
@@ -50,7 +65,7 @@ export async function runOnce(
   } catch (e) {
     return { ok: false, error: String(e && e.message ? e.message : e), pageErrors };
   } finally {
-    await context.close().catch(() => {});
+    if (tab) await tab.close().catch(() => {});
   }
 }
 
