@@ -1,5 +1,5 @@
 // Injected before any page script. Engine-agnostic: timestamps the first
-// WebGL draw call and super_html.game_ready(), samples rAF frame deltas on
+// WebGL draw call, super_html.game_ready() and game_end(), samples rAF frame deltas on
 // demand, and records long tasks. Page errors come from Puppeteer's
 // `pageerror` only. Every hook is guarded so the probe can never break the
 // game it measures.
@@ -10,6 +10,8 @@ function probe() {
     t0: w.performance.now(),
     firstDrawMs: null,
     gameReadyMs: null,
+    gameEndMs: null,
+    openCalls: 0,
     deltas: [],
     longTasks: [],
     startSampling: startSampling,
@@ -36,21 +38,27 @@ function probe() {
     } catch (e) {}
   });
 
-  function wrapReady(obj) {
+  // Wraps obj[name] so its first call stamps perf[field].
+  function wrapHook(obj, name, field) {
     try {
-      if (!obj || typeof obj.game_ready !== 'function' || obj.game_ready.__perfWrapped) return;
-      var orig = obj.game_ready;
+      if (!obj || typeof obj[name] !== 'function' || obj[name].__perfWrapped) return;
+      var orig = obj[name];
       var wrapped = function () {
-        if (perf.gameReadyMs === null) perf.gameReadyMs = w.performance.now();
+        if (perf[field] === null) perf[field] = w.performance.now();
         return orig.apply(this, arguments);
       };
       wrapped.__perfWrapped = true;
-      obj.game_ready = wrapped;
+      obj[name] = wrapped;
     } catch (e) {}
   }
 
-  // super_html is assigned (and its game_ready replaced) by later inline
-  // scripts, so intercept both the global and the property.
+  var HOOKS = [
+    ['game_ready', 'gameReadyMs'],
+    ['game_end', 'gameEndMs'],
+  ];
+
+  // super_html is assigned (and its hooks replaced) by later inline scripts,
+  // so intercept both the global and each hooked property.
   try {
     var superHtml;
     Object.defineProperty(w, 'super_html', {
@@ -59,18 +67,31 @@ function probe() {
       set: function (v) {
         superHtml = v;
         if (!v || typeof v !== 'object') return;
-        var ready = v.game_ready;
-        try {
-          Object.defineProperty(v, 'game_ready', {
-            configurable: true,
-            enumerable: true,
-            get: function () { return ready; },
-            set: function (fn) { ready = fn; wrapReady(v); },
-          });
-        } catch (e) {}
-        wrapReady(v);
+        HOOKS.forEach(function (hook) {
+          var name = hook[0];
+          var field = hook[1];
+          var current = v[name];
+          try {
+            Object.defineProperty(v, name, {
+              configurable: true,
+              enumerable: true,
+              get: function () { return current; },
+              set: function (fn) { current = fn; wrapHook(v, name, field); },
+            });
+          } catch (e) {}
+          wrapHook(v, name, field);
+        });
       },
     });
+  } catch (e) {}
+
+  // The end card's store redirect calls window.open when there is no mraid.
+  // Count it instead of letting a popup tab steal focus mid-measurement.
+  try {
+    w.open = function () {
+      perf.openCalls++;
+      return null;
+    };
   } catch (e) {}
 
   var sampling = false;

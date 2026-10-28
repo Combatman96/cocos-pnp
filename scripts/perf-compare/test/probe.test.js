@@ -17,6 +17,7 @@ function makeWindow() {
     PerformanceObserver: class { observe() {} },
     WebGLRenderingContext: GL,
     addEventListener: () => {},
+    open: () => 'real',
   };
   win.window = win;
   const ctx = vm.createContext(win);
@@ -78,4 +79,22 @@ test('probe does not register its own error listener (pageerror is the single so
   win.window = win;
   vm.runInContext(PROBE_SOURCE, vm.createContext(win));
   assert.equal(added, 0);
+});
+
+test('game_end assigned later is hooked', () => {
+  const h = makeWindow();
+  let called = 0;
+  h.win.super_html = { game_ready() {}, game_end() { called++; } };
+  h.setNow(900);
+  h.win.super_html.game_end();
+  h.setNow(1500);
+  h.win.super_html.game_end();
+  assert.equal(h.win.__perf.gameEndMs, 900);
+  assert.equal(called, 2);
+});
+
+test('window.open is stubbed and counted', () => {
+  const h = makeWindow();
+  assert.equal(h.win.open('x'), null);
+  assert.equal(h.win.__perf.openCalls, 1);
 });
