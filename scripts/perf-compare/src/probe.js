@@ -44,7 +44,11 @@ function probe() {
       if (!obj || typeof obj[name] !== 'function' || obj[name].__perfWrapped) return;
       var orig = obj[name];
       var wrapped = function () {
-        if (perf[field] === null) perf[field] = w.performance.now();
+        if (perf[field] === null) {
+          perf[field] = w.performance.now();
+          // End-screen frames are not gameplay; stop sampling at game end.
+          if (field === 'gameEndMs') stopSampling();
+        }
         return orig.apply(this, arguments);
       };
       wrapped.__perfWrapped = true;

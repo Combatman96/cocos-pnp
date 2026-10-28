@@ -3,6 +3,8 @@ import { PROBE_SOURCE } from './probe.js';
 import { frameStats } from './stats.js';
 import { withTimeout } from './timeout.js';
 import { runAutoplay } from './autoplay/driver.js';
+import { summarizePlay } from './play-summary.js';
+import { pollWhile } from './poll.js';
 
 const MB = 1024 * 1024;
 const SETTLE_MS = 2000;
@@ -114,21 +116,16 @@ async function playPhase(page, cdp, autoplay, playMs) {
     window.__perf.startSampling();
     return performance.now();
   });
-  let playing = true;
   let heapPeak = 0;
-  const pollHeap = async () => {
-    while (playing) {
-      heapPeak = Math.max(heapPeak, (await metrics(cdp)).JSHeapUsedSize);
-      await sleep(HEAP_POLL_MS);
-    }
-  };
-  const poller = pollHeap();
+  const heapPoll = pollWhile(async () => {
+    heapPeak = Math.max(heapPeak, (await metrics(cdp)).JSHeapUsedSize);
+  }, HEAP_POLL_MS);
   let result;
   try {
     result = await runAutoplay(page, autoplay, { durationMs: playMs });
   } finally {
-    playing = false;
-    await poller;
+    const pollError = await heapPoll.stop();
+    if (pollError && result) throw pollError;
   }
   const p = await page.evaluate(() => {
     window.__perf.stopSampling();
@@ -141,15 +138,5 @@ async function playPhase(page, cdp, autoplay, playMs) {
       openCalls: perf.openCalls,
     };
   });
-  const playTasks = p.longTasks.filter((t) => t.start >= playStart && t.start <= p.playEnd);
-  return {
-    frame: frameStats(p.deltas),
-    longTaskTotalMs: playTasks.reduce((a, t) => a + t.duration, 0),
-    heapPeakMB: heapPeak / MB,
-    actionsSent: result.actionsSent,
-    emptyTicks: result.emptyTicks,
-    endedByGame: result.endedByGame,
-    gameEndMs: p.gameEndMs,
-    openCalls: p.openCalls,
-  };
+  return summarizePlay({ ...p, playStart }, result, heapPeak);
 }

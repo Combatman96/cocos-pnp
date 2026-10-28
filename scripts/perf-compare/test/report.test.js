@@ -86,3 +86,8 @@ test('play rows are omitted without autoplay', () => {
   assert.doesNotMatch(t, /play fps/);
   assert.doesNotMatch(t, /games ended/);
 });
+
+test('game end row is labelled as play-relative', () => {
+  const results = new Map([['A', { file: 'a.html', runs: [playRun(55, true)] }]]);
+  assert.match(formatTable(buildReport(results)), /play time to game end/);
+});

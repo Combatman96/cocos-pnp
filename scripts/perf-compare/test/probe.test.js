@@ -110,3 +110,15 @@ test('restarting sampling before the old frame fires keeps one rAF chain', () =>
   h.tick(16);
   assert.deepEqual([...h.win.__perf.deltas], [16, 16]);
 });
+
+test('game_end stops frame sampling so end-screen frames are excluded', () => {
+  const h = makeWindow();
+  h.win.super_html = { game_end() {} };
+  h.win.__perf.startSampling();
+  h.tick(16);
+  h.tick(16);
+  h.win.super_html.game_end();
+  h.tick(16);
+  h.tick(16);
+  assert.deepEqual([...h.win.__perf.deltas], [16]);
+});

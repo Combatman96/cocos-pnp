@@ -21,7 +21,7 @@ export const METRICS = [
   ['playLongTaskTotalMs', 'play long tasks', 'ms', (r) => r.play && r.play.longTaskTotalMs, true],
   ['playHeapPeakMB', 'play heap peak', 'MB', (r) => r.play && r.play.heapPeakMB, true],
   ['playTaps', 'play taps', '', (r) => r.play && r.play.actionsSent, null],
-  ['gameEndMs', 'time to game end', 'ms', (r) => r.play && r.play.gameEndMs, true],
+  ['gameEndMs', 'play time to game end', 'ms', (r) => r.play && r.play.gameEndMs, true],
 ];
 
 // Shortest trailing path that is unique: basename, then add parent folders.
