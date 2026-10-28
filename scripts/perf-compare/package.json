@@ -1,0 +1,16 @@
+{
+  "name": "perf-compare",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Compare load, frame time and heap of single-file playable HTML builds in Chrome",
+  "type": "module",
+  "bin": {
+    "perf-compare": "cli.js"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "puppeteer-core": "^23.11.1"
+  }
+}
