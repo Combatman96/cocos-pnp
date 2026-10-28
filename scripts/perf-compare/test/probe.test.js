@@ -64,3 +64,18 @@ test('sampling records rAF deltas until stopped', () => {
   h.tick(16);
   assert.deepEqual([...h.win.__perf.deltas], [16, 20]);
 });
+
+test('probe does not register its own error listener (pageerror is the single source)', () => {
+  let added = 0;
+  class GL {}
+  const win = {
+    performance: { now: () => 0 },
+    requestAnimationFrame: () => 0,
+    PerformanceObserver: class { observe() {} },
+    WebGLRenderingContext: GL,
+    addEventListener: () => { added++; },
+  };
+  win.window = win;
+  vm.runInContext(PROBE_SOURCE, vm.createContext(win));
+  assert.equal(added, 0);
+});

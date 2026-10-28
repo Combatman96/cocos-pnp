@@ -27,7 +27,7 @@ if (opts.help || positionals.length === 0) {
   --runs N        runs per build (default 5)
   --sample MS     frame/heap sampling window after boot (default 10000)
   --cpu N         CPU throttle rate, 1 = none (default 4)
-  --timeout MS    per-run timeout for load + first draw (default 30000)
+  --timeout MS    limit for each phase: load, first draw, and measurement after it (default 30000)
   --headless      run headless (FPS then uses software GL; less realistic)
   --chrome PATH   Chrome executable (default CHROME_PATH or ${DEFAULT_CHROME})
   --out FILE      JSON output (default perf-results-<timestamp>.json)`);
@@ -57,6 +57,7 @@ const cfg = {
   viewport: { width: 390, height: 844, deviceScaleFactor: 3 },
 };
 const labels = makeLabels(files);
+if (new Set(labels).size !== labels.length) throw new Error(`labels not unique: ${labels.join(', ')}`);
 const results = new Map(labels.map((l, i) => [l, { file: files[i], runs: [] }]));
 
 console.log(

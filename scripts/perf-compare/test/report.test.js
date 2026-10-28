@@ -42,3 +42,14 @@ test('makeLabels keeps labels unique for same basename', () => {
   const labels = makeLabels(['x/one/game.html', 'x/two/game.html']);
   assert.equal(new Set(labels).size, 2);
 });
+
+test('makeLabels unique when parent folders also match', () => {
+  const labels = makeLabels(['a/x/game.html', 'b/x/game.html', 'c/y/other.html']);
+  assert.equal(new Set(labels).size, 3);
+  assert.equal(labels[2], 'other');
+});
+
+test('boot metric labels state their window', () => {
+  const t = formatTable(buildReport(sample()));
+  assert.match(t, /first draw \+ 2s/);
+});

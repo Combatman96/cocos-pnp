@@ -1,12 +1,11 @@
-import path from 'node:path';
 import { summarize, pctDiff } from './stats.js';
 
 // [key, display name, unit, pick(run), lowerIsBetter]
 export const METRICS = [
   ['firstDrawMs', 'first draw', 'ms', (r) => r.firstDrawMs, true],
   ['loadEventMs', 'load event', 'ms', (r) => r.loadEventMs, true],
-  ['scriptDurationMs', 'script time (boot)', 'ms', (r) => r.scriptDurationMs, true],
-  ['longTaskTotalMs', 'long tasks (boot)', 'ms', (r) => r.longTaskTotalMs, true],
+  ['scriptDurationMs', 'script time to first draw + 2s', 'ms', (r) => r.scriptDurationMs, true],
+  ['longTaskTotalMs', 'long tasks to first draw + 2s', 'ms', (r) => r.longTaskTotalMs, true],
   ['fps', 'fps', '', (r) => r.frame && r.frame.fps, false],
   ['frameMsP95', 'frame p95', 'ms', (r) => r.frame && r.frame.frameMsP95, true],
   ['frameMsP99', 'frame p99', 'ms', (r) => r.frame && r.frame.frameMsP99, true],
@@ -16,11 +15,16 @@ export const METRICS = [
   ['heapAfterGcMB', 'heap after GC', 'MB', (r) => r.heapAfterGcMB, true],
 ];
 
+// Shortest trailing path that is unique: basename, then add parent folders.
 export function makeLabels(files) {
-  const base = files.map((f) => path.basename(f).replace(/\.html?$/i, ''));
-  return files.map((f, i) => {
-    const dup = base.filter((b) => b === base[i]).length > 1;
-    return dup ? `${path.basename(path.dirname(f))}/${base[i]}` : base[i];
+  const parts = files.map((f) => f.replace(/\.html?$/i, '').split(/[\\/]+/).filter(Boolean));
+  return parts.map((p, i) => {
+    for (let depth = 1; depth <= p.length; depth++) {
+      const label = p.slice(-depth).join('/');
+      const clash = parts.some((q, j) => j !== i && q.slice(-depth).join('/') === label);
+      if (!clash) return label;
+    }
+    return `${p.join('/')}#${i + 1}`;
   });
 }
 

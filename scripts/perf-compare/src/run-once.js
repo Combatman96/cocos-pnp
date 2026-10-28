@@ -1,6 +1,7 @@
 import { pathToFileURL } from 'node:url';
 import { PROBE_SOURCE } from './probe.js';
 import { frameStats } from './stats.js';
+import { withTimeout } from './timeout.js';
 
 const MB = 1024 * 1024;
 const SETTLE_MS = 2000;
@@ -34,58 +35,68 @@ export async function runOnce(browser, { file, cpuThrottle, sampleMs, timeoutMs,
       timeout: timeoutMs,
       polling: 50,
     });
-    await sleep(SETTLE_MS);
-
-    const boot = await metrics(cdp);
-    const heapAfterLoad = boot.JSHeapUsedSize;
-
-    await page.evaluate(() => window.__perf.startSampling());
-    let heapPeak = heapAfterLoad;
-    const end = Date.now() + sampleMs;
-    while (Date.now() < end) {
-      await sleep(HEAP_POLL_MS);
-      heapPeak = Math.max(heapPeak, (await metrics(cdp)).JSHeapUsedSize);
-    }
-    const probe = await page.evaluate(() => {
-      window.__perf.stopSampling();
-      const nav = performance.getEntriesByType('navigation')[0] || {};
-      const p = window.__perf;
-      return {
-        firstDrawMs: p.firstDrawMs,
-        gameReadyMs: p.gameReadyMs,
-        deltas: p.deltas.slice(),
-        longTasks: p.longTasks.slice(),
-        errors: p.errors.slice(),
-        domContentLoadedMs: nav.domContentLoadedEventEnd ?? null,
-        loadEventMs: nav.loadEventEnd ?? null,
-      };
-    });
-
-    await cdp.send('HeapProfiler.enable');
-    await cdp.send('HeapProfiler.collectGarbage');
-    const heapAfterGc = (await metrics(cdp)).JSHeapUsedSize;
-
-    // Long tasks up to first draw = boot cost; the rest is runtime.
-    const bootTasks = probe.longTasks.filter((t) => t.start <= probe.firstDrawMs);
-    return {
-      ok: true,
-      firstDrawMs: probe.firstDrawMs,
-      gameReadyMs: probe.gameReadyMs,
-      domContentLoadedMs: probe.domContentLoadedMs,
-      loadEventMs: probe.loadEventMs,
-      scriptDurationMs: boot.ScriptDuration * 1000,
-      taskDurationMs: boot.TaskDuration * 1000,
-      longTaskCount: probe.longTasks.length,
-      longTaskTotalMs: bootTasks.reduce((a, t) => a + t.duration, 0),
-      heapAfterLoadMB: heapAfterLoad / MB,
-      heapPeakMB: heapPeak / MB,
-      heapAfterGcMB: heapAfterGc / MB,
-      frame: frameStats(probe.deltas),
-      pageErrors: [...new Set([...pageErrors, ...probe.errors])],
-    };
+    // Post-draw phase has its own limit so a hung page cannot stall the tool.
+    return await withTimeout(
+      measure(page, cdp, sampleMs, pageErrors),
+      SETTLE_MS + sampleMs + timeoutMs,
+      'measurement after first draw',
+    );
   } catch (e) {
     return { ok: false, error: String(e && e.message ? e.message : e), pageErrors };
   } finally {
     await context.close().catch(() => {});
   }
+}
+
+async function measure(page, cdp, sampleMs, pageErrors) {
+  await sleep(SETTLE_MS);
+
+  const boot = await metrics(cdp);
+  const heapAfterLoad = boot.JSHeapUsedSize;
+
+  await page.evaluate(() => window.__perf.startSampling());
+  let heapPeak = heapAfterLoad;
+  const end = Date.now() + sampleMs;
+  while (Date.now() < end) {
+    await sleep(HEAP_POLL_MS);
+    heapPeak = Math.max(heapPeak, (await metrics(cdp)).JSHeapUsedSize);
+  }
+  const probe = await page.evaluate(() => {
+    window.__perf.stopSampling();
+    const nav = performance.getEntriesByType('navigation')[0] || {};
+    const p = window.__perf;
+    return {
+      firstDrawMs: p.firstDrawMs,
+      gameReadyMs: p.gameReadyMs,
+      deltas: p.deltas.slice(),
+      longTasks: p.longTasks.slice(),
+      domContentLoadedMs: nav.domContentLoadedEventEnd ?? null,
+      loadEventMs: nav.loadEventEnd ?? null,
+    };
+  });
+
+  await cdp.send('HeapProfiler.enable');
+  await cdp.send('HeapProfiler.collectGarbage');
+  const heapAfterGc = (await metrics(cdp)).JSHeapUsedSize;
+
+  // Boot window = first draw + settle, same window as the CDP boot metrics.
+  // First draw may be a splash frame, so scene init lands in the settle time.
+  const bootEnd = probe.firstDrawMs + SETTLE_MS;
+  const bootTasks = probe.longTasks.filter((t) => t.start <= bootEnd);
+  return {
+    ok: true,
+    firstDrawMs: probe.firstDrawMs,
+    gameReadyMs: probe.gameReadyMs,
+    domContentLoadedMs: probe.domContentLoadedMs,
+    loadEventMs: probe.loadEventMs,
+    scriptDurationMs: boot.ScriptDuration * 1000,
+    taskDurationMs: boot.TaskDuration * 1000,
+    longTaskCount: probe.longTasks.length,
+    longTaskTotalMs: bootTasks.reduce((a, t) => a + t.duration, 0),
+    heapAfterLoadMB: heapAfterLoad / MB,
+    heapPeakMB: heapPeak / MB,
+    heapAfterGcMB: heapAfterGc / MB,
+    frame: frameStats(probe.deltas),
+    pageErrors: pageErrors.slice(),
+  };
 }

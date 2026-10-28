@@ -1,7 +1,8 @@
 // Injected before any page script. Engine-agnostic: timestamps the first
 // WebGL draw call and super_html.game_ready(), samples rAF frame deltas on
-// demand, and records long tasks. Every hook is guarded so the probe can
-// never break the game it measures.
+// demand, and records long tasks. Page errors come from Puppeteer's
+// `pageerror` only. Every hook is guarded so the probe can never break the
+// game it measures.
 
 function probe() {
   var w = window;
@@ -11,7 +12,6 @@ function probe() {
     gameReadyMs: null,
     deltas: [],
     longTasks: [],
-    errors: [],
     startSampling: startSampling,
     stopSampling: stopSampling,
   };
@@ -97,12 +97,6 @@ function probe() {
         perf.longTasks.push({ start: e.startTime, duration: e.duration });
       });
     }).observe({ type: 'longtask', buffered: true });
-  } catch (e) {}
-
-  try {
-    w.addEventListener('error', function (e) {
-      perf.errors.push(String((e && e.message) || e));
-    });
   } catch (e) {}
 }
 
