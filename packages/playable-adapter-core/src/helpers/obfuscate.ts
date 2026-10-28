@@ -5,7 +5,7 @@ import type { TObfuscateRC } from '@/typings'
 // Branch default for control-flow flattening.
 // `feat/obfuscate`      -> false (names mangled, flow readable, ~0 cost)
 // `feat/obfuscate-flow` -> true  (flow flattened, higher size/CPU)
-const DEFAULT_CONTROL_FLOW_FLATTENING = false
+const DEFAULT_CONTROL_FLOW_FLATTENING = true
 
 type TNormalizedRC = {
   enable: boolean

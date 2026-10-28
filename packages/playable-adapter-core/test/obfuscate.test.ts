@@ -44,16 +44,18 @@ test('normalizeObfuscateRC enables by default and opts out on false', () => {
   assert.equal(normalizeObfuscateRC({ controlFlowFlattening: true }).controlFlowFlattening, true)
 })
 
-test('buildObfuscatorOptions: branch default is flatten OFF, string encryption OFF', () => {
-  const off = buildObfuscatorOptions({})
+test('buildObfuscatorOptions: branch default is flatten ON, string encryption OFF', () => {
+  // feat/obfuscate-flow defaults control-flow flattening ON.
+  const def = buildObfuscatorOptions({})
+  assert.equal(def.controlFlowFlattening, true)
+  assert.equal(def.controlFlowFlatteningThreshold, 0.75)
+  assert.equal(def.stringArray, false)
+  assert.equal(def.sourceMap, false)
+
+  // Explicit override still wins.
+  const off = buildObfuscatorOptions({ controlFlowFlattening: false })
   assert.equal(off.controlFlowFlattening, false)
   assert.equal(off.controlFlowFlatteningThreshold, 0)
-  assert.equal(off.stringArray, false)
-  assert.equal(off.sourceMap, false)
-
-  const on = buildObfuscatorOptions({ controlFlowFlattening: true })
-  assert.equal(on.controlFlowFlattening, true)
-  assert.equal(on.controlFlowFlatteningThreshold, 0.75)
 })
 
 const SAMPLE = `System.register("chunks:///_virtual/GameController.ts",["cc"],(function(exports){
