@@ -12,6 +12,7 @@ import {
 import {
   jszipCode
 } from '@/helpers/injects'
+import { obfuscateResMapper } from '@/helpers/obfuscate'
 import { deflate } from 'pako'
 import { TRANSPARENT_GIF } from "@/constants"
 
@@ -159,6 +160,9 @@ const paddingAllResToMapped = async (options: {
       return data
     }
   })
+
+  // Obfuscate project script bundles before packing them into the HTML.
+  obfuscateResMapper(resMapper, getAdapterRCJson()?.obfuscate)
 
   let resStr = JSON.stringify(resMapper)
   let compDiff = 0

@@ -95,4 +95,27 @@ export type TAdapterRC = {
   tinify?: boolean
   tinifyApiKey?: string
   isZip?: boolean
+  /**
+   * Obfuscate project script bundles (assets/*.js, excluding assets/internal/)
+   * before they are packed into the single HTML. Enabled by default on this
+   * build. Set `false` to opt out, or pass options to tune.
+   */
+  obfuscate?: boolean | TObfuscateRC
+}
+
+export type TObfuscateRC = {
+  /** Default true. */
+  enable?: boolean
+  /**
+   * Control-flow flattening: rewrites logic into a switch-dispatch state
+   * machine so execution flow cannot be read. Costs size and CPU. The branch
+   * default differs (`feat/obfuscate` = off, `feat/obfuscate-flow` = on).
+   */
+  controlFlowFlattening?: boolean
+  /** 0..1, how much code to flatten. Default 0.75 when flattening is on. */
+  controlFlowFlatteningThreshold?: number
+  /** Extra resource-key substrings to obfuscate beyond the default scope. */
+  include?: string[]
+  /** Resource-key substrings to never obfuscate. */
+  exclude?: string[]
 }

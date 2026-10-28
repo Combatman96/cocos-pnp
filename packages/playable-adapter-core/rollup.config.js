@@ -20,6 +20,9 @@ export default [
     output: {
       file: `dist/playable-adapter-core.js`,
       format: 'commonjs',
+      // javascript-obfuscator uses dynamic import() internally; inline them so
+      // the whole tool still emits as a single commonjs chunk.
+      inlineDynamicImports: true,
     },
     plugins: [
       typescript(),
