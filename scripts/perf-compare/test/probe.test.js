@@ -98,3 +98,15 @@ test('window.open is stubbed and counted', () => {
   assert.equal(h.win.open('x'), null);
   assert.equal(h.win.__perf.openCalls, 1);
 });
+
+test('restarting sampling before the old frame fires keeps one rAF chain', () => {
+  const h = makeWindow();
+  h.win.__perf.startSampling();
+  h.tick(16);
+  h.win.__perf.stopSampling();
+  h.win.__perf.startSampling();
+  h.tick(16);
+  h.tick(16);
+  h.tick(16);
+  assert.deepEqual([...h.win.__perf.deltas], [16, 16]);
+});

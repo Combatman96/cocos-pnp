@@ -6,6 +6,7 @@ const run = (firstDrawMs, fps) => ({
   ok: true,
   firstDrawMs,
   loadEventMs: 1000,
+  scriptDurationMs: 500,
   frame: { fps, frameMsMedian: 16, frameMsP95: 17, frameMsP99: 20, jankPct: 0 },
   heapAfterLoadMB: 50,
   pageErrors: [],
@@ -52,4 +53,36 @@ test('makeLabels unique when parent folders also match', () => {
 test('boot metric labels state their window', () => {
   const t = formatTable(buildReport(sample()));
   assert.match(t, /first draw \+ 2s/);
+});
+
+const playRun = (fps, ended) => ({
+  ...run(100, 60),
+  play: {
+    frame: { fps, frameMsMedian: 16, frameMsP95: 20, frameMsP99: 30, jankPct: 1 },
+    longTaskTotalMs: 200,
+    heapPeakMB: 90,
+    actionsSent: 40,
+    emptyTicks: 0,
+    endedByGame: ended,
+    gameEndMs: ended ? 15000 : null,
+    openCalls: 0,
+  },
+});
+
+test('play rows appear when runs have play data', () => {
+  const results = new Map([
+    ['A', { file: 'a.html', runs: [playRun(55, true), playRun(56, false)] }],
+    ['B', { file: 'b.html', runs: [playRun(50, false), playRun(51, false)] }],
+  ]);
+  const r = buildReport(results);
+  assert.equal(r.builds[0].gamesEnded, 1);
+  const t = formatTable(r);
+  assert.match(t, /play fps/);
+  assert.match(t, /games ended\s+1\s+0/);
+});
+
+test('play rows are omitted without autoplay', () => {
+  const t = formatTable(buildReport(sample()));
+  assert.doesNotMatch(t, /play fps/);
+  assert.doesNotMatch(t, /games ended/);
 });

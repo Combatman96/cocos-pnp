@@ -2,6 +2,7 @@ import { pathToFileURL } from 'node:url';
 import { PROBE_SOURCE } from './probe.js';
 import { frameStats } from './stats.js';
 import { withTimeout } from './timeout.js';
+import { runAutoplay } from './autoplay/driver.js';
 
 const MB = 1024 * 1024;
 const SETTLE_MS = 2000;
@@ -16,7 +17,10 @@ async function metrics(cdp) {
   return Object.fromEntries(list.map((m) => [m.name, m.value]));
 }
 
-export async function runOnce(browser, { file, cpuThrottle, sampleMs, timeoutMs, viewport }) {
+export async function runOnce(
+  browser,
+  { file, cpuThrottle, sampleMs, timeoutMs, viewport, autoplay = null, playMs = 0 },
+) {
   const context = await browser.createBrowserContext();
   const pageErrors = [];
   try {
@@ -37,8 +41,8 @@ export async function runOnce(browser, { file, cpuThrottle, sampleMs, timeoutMs,
     });
     // Post-draw phase has its own limit so a hung page cannot stall the tool.
     return await withTimeout(
-      measure(page, cdp, sampleMs, pageErrors),
-      SETTLE_MS + sampleMs + timeoutMs,
+      measure(page, cdp, sampleMs, pageErrors, autoplay, playMs),
+      SETTLE_MS + sampleMs + (autoplay ? playMs : 0) + timeoutMs,
       'measurement after first draw',
     );
   } catch (e) {
@@ -48,7 +52,7 @@ export async function runOnce(browser, { file, cpuThrottle, sampleMs, timeoutMs,
   }
 }
 
-async function measure(page, cdp, sampleMs, pageErrors) {
+async function measure(page, cdp, sampleMs, pageErrors, autoplay, playMs) {
   await sleep(SETTLE_MS);
 
   const boot = await metrics(cdp);
@@ -75,6 +79,8 @@ async function measure(page, cdp, sampleMs, pageErrors) {
     };
   });
 
+  const play = autoplay ? await playPhase(page, cdp, autoplay, playMs) : null;
+
   await cdp.send('HeapProfiler.enable');
   await cdp.send('HeapProfiler.collectGarbage');
   const heapAfterGc = (await metrics(cdp)).JSHeapUsedSize;
@@ -98,5 +104,52 @@ async function measure(page, cdp, sampleMs, pageErrors) {
     heapAfterGcMB: heapAfterGc / MB,
     frame: frameStats(probe.deltas),
     pageErrors: pageErrors.slice(),
+    play,
+  };
+}
+
+// Drives the game with autoplay while sampling frames and polling heap.
+async function playPhase(page, cdp, autoplay, playMs) {
+  const playStart = await page.evaluate(() => {
+    window.__perf.startSampling();
+    return performance.now();
+  });
+  let playing = true;
+  let heapPeak = 0;
+  const pollHeap = async () => {
+    while (playing) {
+      heapPeak = Math.max(heapPeak, (await metrics(cdp)).JSHeapUsedSize);
+      await sleep(HEAP_POLL_MS);
+    }
+  };
+  const poller = pollHeap();
+  let result;
+  try {
+    result = await runAutoplay(page, autoplay, { durationMs: playMs });
+  } finally {
+    playing = false;
+    await poller;
+  }
+  const p = await page.evaluate(() => {
+    window.__perf.stopSampling();
+    const perf = window.__perf;
+    return {
+      playEnd: performance.now(),
+      deltas: perf.deltas.slice(),
+      longTasks: perf.longTasks.slice(),
+      gameEndMs: perf.gameEndMs,
+      openCalls: perf.openCalls,
+    };
+  });
+  const playTasks = p.longTasks.filter((t) => t.start >= playStart && t.start <= p.playEnd);
+  return {
+    frame: frameStats(p.deltas),
+    longTaskTotalMs: playTasks.reduce((a, t) => a + t.duration, 0),
+    heapPeakMB: heapPeak / MB,
+    actionsSent: result.actionsSent,
+    emptyTicks: result.emptyTicks,
+    endedByGame: result.endedByGame,
+    gameEndMs: p.gameEndMs,
+    openCalls: p.openCalls,
   };
 }

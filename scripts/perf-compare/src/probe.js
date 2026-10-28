@@ -94,22 +94,26 @@ function probe() {
     };
   } catch (e) {}
 
-  var sampling = false;
+  // Each start bumps the generation, so a callback queued by an earlier
+  // start/stop cycle dies instead of running as a second chain.
+  var generation = 0;
   var prev = null;
-  function frame(now) {
-    if (!sampling) return;
-    if (prev !== null) perf.deltas.push(now - prev);
-    prev = now;
-    w.requestAnimationFrame(frame);
+  function chain(gen) {
+    return function frame(now) {
+      if (gen !== generation) return;
+      if (prev !== null) perf.deltas.push(now - prev);
+      prev = now;
+      w.requestAnimationFrame(frame);
+    };
   }
   function startSampling() {
     perf.deltas = [];
     prev = null;
-    sampling = true;
-    w.requestAnimationFrame(frame);
+    generation++;
+    w.requestAnimationFrame(chain(generation));
   }
   function stopSampling() {
-    sampling = false;
+    generation++;
   }
 
   try {

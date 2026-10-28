@@ -13,6 +13,15 @@ export const METRICS = [
   ['heapAfterLoadMB', 'heap after load', 'MB', (r) => r.heapAfterLoadMB, true],
   ['heapPeakMB', 'heap peak', 'MB', (r) => r.heapPeakMB, true],
   ['heapAfterGcMB', 'heap after GC', 'MB', (r) => r.heapAfterGcMB, true],
+  // Autoplay phase. lowerIsBetter null = neutral (no better/worse label).
+  ['playFps', 'play fps', '', (r) => r.play && r.play.frame.fps, false],
+  ['playFrameMsP95', 'play frame p95', 'ms', (r) => r.play && r.play.frame.frameMsP95, true],
+  ['playFrameMsP99', 'play frame p99', 'ms', (r) => r.play && r.play.frame.frameMsP99, true],
+  ['playJankPct', 'play jank frames', '%', (r) => r.play && r.play.frame.jankPct, true],
+  ['playLongTaskTotalMs', 'play long tasks', 'ms', (r) => r.play && r.play.longTaskTotalMs, true],
+  ['playHeapPeakMB', 'play heap peak', 'MB', (r) => r.play && r.play.heapPeakMB, true],
+  ['playTaps', 'play taps', '', (r) => r.play && r.play.actionsSent, null],
+  ['gameEndMs', 'time to game end', 'ms', (r) => r.play && r.play.gameEndMs, true],
 ];
 
 // Shortest trailing path that is unique: basename, then add parent folders.
@@ -41,6 +50,8 @@ export function buildReport(results) {
       okRuns: ok.length,
       failedRuns: runs.length - ok.length,
       pageErrorCount: runs.reduce((a, r) => a + (r.pageErrors ? r.pageErrors.length : 0), 0),
+      hasPlay: ok.some((r) => r.play),
+      gamesEnded: ok.filter((r) => r.play && r.play.endedByGame).length,
       errors: runs.filter((r) => !r.ok).map((r) => r.error),
       metrics,
     });
@@ -67,6 +78,8 @@ export function formatTable(report) {
   const rows = [head];
 
   for (const [key, name, unit, , lowerIsBetter] of METRICS) {
+    // Skip rows no build measured (e.g. play rows without --autoplay).
+    if (builds.every((b) => b.metrics[key].n === 0)) continue;
     const cells = [unit ? `${name} (${unit})` : name];
     for (const b of builds) {
       const s = b.metrics[key];
@@ -81,7 +94,8 @@ export function formatTable(report) {
       }
       const d = pctDiff(ref.median, s.median);
       const worse = lowerIsBetter ? d > 0 : d < 0;
-      const flag = significant(ref, s) ? (worse ? ' * worse' : ' * better') : '';
+      const label = lowerIsBetter === null ? '' : worse ? ' worse' : ' better';
+      const flag = significant(ref, s) ? ` *${label}` : '';
       cells.push(`${d >= 0 ? '+' : ''}${d.toFixed(1)}%${flag}`);
     }
     rows.push(cells);
@@ -90,6 +104,9 @@ export function formatTable(report) {
   const status = ['runs ok/failed', ...builds.map((b) => `${b.okRuns}/${b.failedRuns}`)];
   const errs = ['page errors', ...builds.map((b) => String(b.pageErrorCount))];
   rows.push(status, errs);
+  if (builds.some((b) => b.hasPlay)) {
+    rows.push(['games ended', ...builds.map((b) => String(b.gamesEnded))]);
+  }
 
   const widths = head.map((_, c) => Math.max(...rows.map((r) => (r[c] || '').length)));
   const line = (r) => r.map((cell, c) => (cell || '').padEnd(widths[c])).join('  ');
